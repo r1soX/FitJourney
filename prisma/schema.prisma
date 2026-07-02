@@ -1,0 +1,165 @@
+// FitJourney — схема данных (SQLite + Prisma)
+// Приложение однопользовательское: единственный пользователь описан в User.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Пользователь и настройки
+// ─────────────────────────────────────────────
+model User {
+  id               Int      @id @default(autoincrement())
+  username         String   @unique
+  passwordHash     String
+  name             String   @default("Атлет")
+  age              Int      @default(26)
+  heightCm         Int      @default(185)
+  startWeight      Float    @default(126)
+  currentWeight    Float    @default(126)
+  goalWeight       Float    @default(80)
+  unit             String   @default("kg") // kg | lb
+  theme            String   @default("dark") // dark | light | system
+  programStartDate DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// Библиотека упражнений
+// ─────────────────────────────────────────────
+model Exercise {
+  id               Int      @id @default(autoincrement())
+  slug             String   @unique
+  name             String
+  category         String // strength | cardio | warmup | cooldown | core
+  muscleGroup      String // ноги, грудь, спина, плечи, руки, кор, всё тело, кардио
+  equipment        String // тренажёр, гантели, штанга, вес тела, дорожка ...
+  description      String
+  technique        String // пошаговая техника
+  tips             String // советы (одной строкой / через ; )
+  imageUrl         String? // опциональная картинка/gif
+  alternativeSlugs String   @default("[]") // JSON-массив slug-ов аналогов
+  isFavorite       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  planItems WorkoutExercise[]
+}
+
+// ─────────────────────────────────────────────
+// План (шаблон программы на 12 месяцев)
+// ─────────────────────────────────────────────
+model WorkoutPlan {
+  id            Int      @id @default(autoincrement())
+  sequence      Int      @unique // сквозной порядковый номер тренировки (1..N)
+  month         Int // 1..12
+  weekOfProgram Int // 1..52
+  weekOfMonth   Int // 1..~5
+  dayOfWeek     Int // 1=Пн, 3=Ср, 5=Пт
+  phase         String // название фазы (Адаптация, База ...)
+  title         String // например "Всё тело A"
+  focus         String // основной акцент дня
+  warmup        String
+  cardio        String
+  cooldown      String
+  restAdvice    String
+  notes         String
+  estMinutes    Int      @default(50)
+  isDeload      Boolean  @default(false)
+
+  exercises WorkoutExercise[]
+  session   WorkoutSession?
+}
+
+model WorkoutExercise {
+  id           Int    @id @default(autoincrement())
+  planId       Int
+  exerciseId   Int
+  order        Int
+  block        String @default("main") // main | superset-a | superset-b | finisher
+  sets         Int
+  reps         String // "12", "10-12", "30 сек", "макс"
+  weightAdvice String // "лёгкий вес", "20 кг", "вес тела"
+  restSeconds  Int
+  note         String @default("")
+
+  plan     WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercise Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+// ─────────────────────────────────────────────
+// История выполнения тренировок
+// ─────────────────────────────────────────────
+model WorkoutSession {
+  id         Int       @id @default(autoincrement())
+  planId     Int?      @unique
+  date       DateTime
+  status     String    @default("in_progress") // in_progress | completed | skipped
+  startedAt  DateTime?
+  endedAt    DateTime?
+  durationSec Int?
+  notes      String    @default("")
+  feelings   String    @default("")
+  difficulty Int? // 1..5
+  mood       Int? // 1..5
+  pain       Int? // 0..5
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  plan         WorkoutPlan?  @relation(fields: [planId], references: [id])
+  exerciseLogs ExerciseLog[]
+}
+
+model ExerciseLog {
+  id               Int      @id @default(autoincrement())
+  sessionId        Int
+  order            Int
+  exerciseSlug     String
+  exerciseName     String
+  targetSets       Int
+  targetReps       String
+  targetWeight     String
+  restSeconds      Int
+  status           String   @default("pending") // pending | completed | skipped | replaced
+  replacedWithSlug String?
+  setsData         String   @default("[]") // JSON: [{ reps, weight, done }]
+  createdAt        DateTime @default(now())
+
+  session WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// ─────────────────────────────────────────────
+// Отслеживание веса
+// ─────────────────────────────────────────────
+model WeightEntry {
+  id        Int      @id @default(autoincrement())
+  date      DateTime
+  weight    Float
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+// ─────────────────────────────────────────────
+// Достижения
+// ─────────────────────────────────────────────
+model Achievement {
+  id          Int       @id @default(autoincrement())
+  key         String    @unique
+  title       String
+  description String
+  icon        String    @default("trophy")
+  tier        String    @default("bronze") // bronze | silver | gold
+  unlockedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
