@@ -18,7 +18,7 @@ export default async function HistoryPage() {
   if (!user) redirect("/login");
 
   const sessions = await prisma.workoutSession.findMany({
-    where: { status: { in: ["completed", "skipped"] } },
+    where: { userId: user.id, status: { in: ["completed", "skipped"] } },
     orderBy: { date: "desc" },
     include: {
       plan: { select: { title: true, sequence: true, month: true } },

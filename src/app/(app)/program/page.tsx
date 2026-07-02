@@ -12,7 +12,7 @@ export default async function ProgramPage() {
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const plans = await getAllPlansWithMeta(user.programStartDate);
+  const plans = await getAllPlansWithMeta(user.programStartDate, user.id);
   const lite: PlanLite[] = plans.map((p) => ({
     id: p.id,
     sequence: p.sequence,

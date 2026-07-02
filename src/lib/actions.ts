@@ -5,9 +5,8 @@ import { startOfDay } from "date-fns";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { getSession } from "./auth";
-import { getAllPlansWithMeta, computeStreaks, getUser } from "./data";
+import { getAllPlansWithMeta, computeStreaks } from "./data";
 import { evaluateAchievements } from "./program/achievements";
-import { GOAL_WEIGHT } from "./program/weightPlan";
 
 async function requireUid(): Promise<number> {
   const session = await getSession();
@@ -19,24 +18,24 @@ async function requireUid(): Promise<number> {
 // Тренировки
 // ─────────────────────────────────────────────
 export async function startWorkout(planId: number): Promise<number> {
-  await requireUid();
+  const uid = await requireUid();
 
-  const existing = await prisma.workoutSession.findUnique({ where: { planId } });
+  const existing = await prisma.workoutSession.findUnique({
+    where: { userId_planId: { userId: uid, planId } },
+  });
   if (existing) return existing.id;
 
   const plan = await prisma.workoutPlan.findUnique({
     where: { id: planId },
     include: {
-      exercises: {
-        orderBy: { order: "asc" },
-        include: { exercise: true },
-      },
+      exercises: { orderBy: { order: "asc" }, include: { exercise: true } },
     },
   });
   if (!plan) throw new Error("Тренировка не найдена");
 
   const session = await prisma.workoutSession.create({
     data: {
+      userId: uid,
       planId,
       date: new Date(),
       status: "in_progress",
@@ -143,14 +142,16 @@ export async function finishWorkout(
   revalidatePath("/calendar");
   revalidatePath("/history");
   revalidatePath("/stats");
+  revalidatePath("/together");
 }
 
 export async function skipWorkout(planId: number, note = ""): Promise<void> {
-  await requireUid();
+  const uid = await requireUid();
   await prisma.workoutSession.upsert({
-    where: { planId },
+    where: { userId_planId: { userId: uid, planId } },
     update: { status: "skipped", notes: note, endedAt: new Date() },
     create: {
+      userId: uid,
       planId,
       date: new Date(),
       status: "skipped",
@@ -182,9 +183,11 @@ export async function addWeightEntry(data: {
   const uid = await requireUid();
   const date = data.date ? startOfDay(new Date(data.date)) : startOfDay(new Date());
 
-  // Заменяем запись за тот же день, если есть
   const existing = await prisma.weightEntry.findFirst({
-    where: { date: { gte: date, lt: new Date(date.getTime() + 86_400_000) } },
+    where: {
+      userId: uid,
+      date: { gte: date, lt: new Date(date.getTime() + 86_400_000) },
+    },
   });
   if (existing) {
     await prisma.weightEntry.update({
@@ -193,7 +196,7 @@ export async function addWeightEntry(data: {
     });
   } else {
     await prisma.weightEntry.create({
-      data: { weight: data.weight, note: data.note ?? "", date },
+      data: { userId: uid, weight: data.weight, note: data.note ?? "", date },
     });
   }
 
@@ -203,10 +206,13 @@ export async function addWeightEntry(data: {
   revalidatePath("/weight");
   revalidatePath("/calendar");
   revalidatePath("/stats");
+  revalidatePath("/together");
 }
 
 export async function deleteWeightEntry(id: number): Promise<void> {
-  await requireUid();
+  const uid = await requireUid();
+  const entry = await prisma.weightEntry.findUnique({ where: { id } });
+  if (!entry || entry.userId !== uid) return;
   await prisma.weightEntry.delete({ where: { id } });
   revalidatePath("/weight");
   revalidatePath("/");
@@ -243,6 +249,7 @@ export async function updateSettings(data: {
   revalidatePath("/");
   revalidatePath("/settings");
   revalidatePath("/weight");
+  revalidatePath("/together");
 }
 
 export async function changePassword(
@@ -261,50 +268,57 @@ export async function changePassword(
 }
 
 // ─────────────────────────────────────────────
-// Избранные упражнения
+// Избранные упражнения (per-user)
 // ─────────────────────────────────────────────
 export async function toggleFavorite(slug: string): Promise<void> {
-  await requireUid();
-  const ex = await prisma.exercise.findUnique({ where: { slug } });
-  if (!ex) return;
-  await prisma.exercise.update({
-    where: { slug },
-    data: { isFavorite: !ex.isFavorite },
+  const uid = await requireUid();
+  const existing = await prisma.favorite.findUnique({
+    where: { userId_exerciseSlug: { userId: uid, exerciseSlug: slug } },
   });
+  if (existing) {
+    await prisma.favorite.delete({ where: { id: existing.id } });
+  } else {
+    await prisma.favorite.create({ data: { userId: uid, exerciseSlug: slug } });
+  }
   revalidatePath("/exercises");
   revalidatePath(`/exercises/${slug}`);
 }
 
 // ─────────────────────────────────────────────
-// Достижения
+// Достижения (per-user)
 // ─────────────────────────────────────────────
 export async function syncAchievements(): Promise<void> {
-  const user = await getUser();
+  const uid = await requireUid().catch(() => null);
+  if (!uid) return;
+  const user = await prisma.user.findUnique({ where: { id: uid } });
   if (!user) return;
+
   const today = startOfDay(new Date());
-  const plans = await getAllPlansWithMeta(user.programStartDate);
+  const plans = await getAllPlansWithMeta(user.programStartDate, user.id);
   const completed = plans.filter((p) => p.status === "completed").length;
   const streak = computeStreaks(plans, today);
 
   const sessions = await prisma.workoutSession.findMany({
-    where: { status: "completed" },
+    where: { userId: user.id, status: "completed" },
     select: { durationSec: true },
   });
   const totalHours = sessions.reduce((s, x) => s + (x.durationSec ?? 0), 0) / 3600;
 
-  const latest = await prisma.weightEntry.findFirst({ orderBy: { date: "desc" } });
+  const latest = await prisma.weightEntry.findFirst({
+    where: { userId: user.id },
+    orderBy: { date: "desc" },
+  });
   const currentWeight = latest?.weight ?? user.currentWeight;
   const totalWeightLost = Math.max(0, user.startWeight - currentWeight);
 
-  // «Месяц завершён»: есть месяц, где все прошедшие тренировки выполнены и их >= (норма месяца)
-  const byMonth = new Map<number, PlanLite[]>();
+  const byMonth = new Map<number, string[]>();
   for (const p of plans) {
     if (!byMonth.has(p.month)) byMonth.set(p.month, []);
-    byMonth.get(p.month)!.push({ status: p.status });
+    byMonth.get(p.month)!.push(p.status);
   }
   let monthCompleted = false;
   for (const [, list] of byMonth) {
-    if (list.length > 0 && list.every((p) => p.status === "completed")) {
+    if (list.length > 0 && list.every((s) => s === "completed")) {
       monthCompleted = true;
       break;
     }
@@ -315,11 +329,11 @@ export async function syncAchievements(): Promise<void> {
     longestStreak: streak.longest,
     totalWeightLost,
     totalHours,
-    reachedGoal: currentWeight <= GOAL_WEIGHT,
+    reachedGoal: currentWeight <= user.goalWeight,
     monthCompleted,
   });
 
-  const all = await prisma.achievement.findMany();
+  const all = await prisma.achievement.findMany({ where: { userId: user.id } });
   for (const a of all) {
     if (shouldUnlock.has(a.key) && !a.unlockedAt) {
       await prisma.achievement.update({
@@ -331,25 +345,21 @@ export async function syncAchievements(): Promise<void> {
   revalidatePath("/achievements");
 }
 
-interface PlanLite {
-  status: string;
-}
-
 // ─────────────────────────────────────────────
-// Экспорт / импорт данных
+// Экспорт / импорт данных (текущего пользователя)
 // ─────────────────────────────────────────────
 export async function exportData(): Promise<string> {
-  await requireUid();
+  const uid = await requireUid();
   const [user, weights, sessions, achievements, favorites] = await Promise.all([
-    prisma.user.findFirst(),
-    prisma.weightEntry.findMany({ orderBy: { date: "asc" } }),
-    prisma.workoutSession.findMany({ include: { exerciseLogs: true } }),
-    prisma.achievement.findMany(),
-    prisma.exercise.findMany({ where: { isFavorite: true }, select: { slug: true } }),
+    prisma.user.findUnique({ where: { id: uid } }),
+    prisma.weightEntry.findMany({ where: { userId: uid }, orderBy: { date: "asc" } }),
+    prisma.workoutSession.findMany({ where: { userId: uid }, include: { exerciseLogs: true } }),
+    prisma.achievement.findMany({ where: { userId: uid } }),
+    prisma.favorite.findMany({ where: { userId: uid }, select: { exerciseSlug: true } }),
   ]);
   return JSON.stringify(
     {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       user: user
         ? {
@@ -364,10 +374,10 @@ export async function exportData(): Promise<string> {
             programStartDate: user.programStartDate,
           }
         : null,
-      weights,
+      weights: weights.map((w) => ({ weight: w.weight, note: w.note, date: w.date })),
       sessions,
       achievements: achievements.map((a) => ({ key: a.key, unlockedAt: a.unlockedAt })),
-      favorites: favorites.map((f) => f.slug),
+      favorites: favorites.map((f) => f.exerciseSlug),
     },
     null,
     2,
@@ -402,17 +412,17 @@ export async function importData(json: string): Promise<{ ok: boolean; error?: s
       });
     }
     if (Array.isArray(data.weights)) {
-      await prisma.weightEntry.deleteMany();
+      await prisma.weightEntry.deleteMany({ where: { userId: uid } });
       for (const w of data.weights) {
         await prisma.weightEntry.create({
-          data: { weight: w.weight, note: w.note ?? "", date: new Date(w.date) },
+          data: { userId: uid, weight: w.weight, note: w.note ?? "", date: new Date(w.date) },
         });
       }
     }
     if (Array.isArray(data.favorites)) {
-      await prisma.exercise.updateMany({ data: { isFavorite: false } });
+      await prisma.favorite.deleteMany({ where: { userId: uid } });
       for (const slug of data.favorites) {
-        await prisma.exercise.updateMany({ where: { slug }, data: { isFavorite: true } });
+        await prisma.favorite.create({ data: { userId: uid, exerciseSlug: slug } }).catch(() => {});
       }
     }
     await syncAchievements();

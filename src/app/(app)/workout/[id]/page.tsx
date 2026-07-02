@@ -28,6 +28,7 @@ export default async function WorkoutPage({
     },
   });
   if (!workout || !workout.plan) notFound();
+  if (workout.userId !== session.uid) notFound();
 
   // Собираем детали упражнений и их аналоги
   const logSlugs = workout.exerciseLogs.map((l) => l.exerciseSlug);

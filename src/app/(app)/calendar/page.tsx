@@ -18,8 +18,11 @@ export default async function CalendarPage() {
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const plans = await getAllPlansWithMeta(user.programStartDate);
-  const entries = await prisma.weightEntry.findMany({ orderBy: { date: "asc" } });
+  const plans = await getAllPlansWithMeta(user.programStartDate, user.id);
+  const entries = await prisma.weightEntry.findMany({
+    where: { userId: user.id },
+    orderBy: { date: "asc" },
+  });
 
   const events: CalEvent[] = plans.map((p) => ({
     dateISO: keyOf(p.date),

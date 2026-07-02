@@ -2,19 +2,28 @@ import "server-only";
 import { addDays, differenceInCalendarDays, startOfDay, isSameDay } from "date-fns";
 import { prisma } from "./prisma";
 import { getSession } from "./auth";
-import {
-  START_WEIGHT,
-  GOAL_WEIGHT,
-  targetWeightForDate,
-  forecastGoalDate,
-} from "./program/weightPlan";
+import { targetWeightForDate, forecastGoalDate } from "./program/weightPlan";
 
 const TOTAL_WORKOUTS = 156; // 52 недели × 3
+
+type UserRecord = NonNullable<Awaited<ReturnType<typeof getUserById>>>;
+
+async function getUserById(id: number) {
+  return prisma.user.findUnique({ where: { id } });
+}
 
 export async function getUser() {
   const session = await getSession();
   if (!session) return null;
   return prisma.user.findUnique({ where: { id: session.uid } });
+}
+
+/** Партнёр по тренировкам — второй пользователь приложения. */
+export async function getPartner(userId: number) {
+  return prisma.user.findFirst({
+    where: { id: { not: userId } },
+    orderBy: { id: "asc" },
+  });
 }
 
 /** Дата запланированной тренировки. programStart — понедельник недели 1. */
@@ -54,13 +63,13 @@ interface PlanRow {
   focus: string;
   estMinutes: number;
   isDeload: boolean;
-  session: { id: number; status: string } | null;
+  sessions: { id: number; status: string }[];
 }
 
 function decorate(plan: PlanRow, programStart: Date, today: Date): PlanWithMeta {
   const date = planDate(programStart, plan.weekOfProgram, plan.dayOfWeek);
+  const sess = plan.sessions[0] ?? null;
   let status: PlanStatus;
-  const sess = plan.session;
   if (sess?.status === "completed") status = "completed";
   else if (sess?.status === "skipped") status = "skipped";
   else if (isSameDay(date, today)) status = "today";
@@ -85,11 +94,16 @@ function decorate(plan: PlanRow, programStart: Date, today: Date): PlanWithMeta 
   };
 }
 
-export async function getAllPlansWithMeta(programStart: Date): Promise<PlanWithMeta[]> {
+export async function getAllPlansWithMeta(
+  programStart: Date,
+  userId: number,
+): Promise<PlanWithMeta[]> {
   const today = startOfDay(new Date());
   const plans = await prisma.workoutPlan.findMany({
     orderBy: { sequence: "asc" },
-    include: { session: { select: { id: true, status: true } } },
+    include: {
+      sessions: { where: { userId }, select: { id: true, status: true } },
+    },
   });
   return plans.map((p) => decorate(p as PlanRow, programStart, today));
 }
@@ -118,31 +132,33 @@ export function computeStreaks(plans: PlanWithMeta[], today: Date): StreakInfo {
       cur += 1;
       longest = Math.max(longest, cur);
     } else if (p.date < today) {
-      cur = 0; // пропущенный прошлый день рвёт серию
+      cur = 0;
     }
-    // сегодняшняя незавершённая — не рвёт серию
   }
   return { current: cur, longest };
 }
 
-export async function getLatestWeight(): Promise<number | null> {
-  const entry = await prisma.weightEntry.findFirst({ orderBy: { date: "desc" } });
+export async function getLatestWeight(userId: number): Promise<number | null> {
+  const entry = await prisma.weightEntry.findFirst({
+    where: { userId },
+    orderBy: { date: "desc" },
+  });
   return entry?.weight ?? null;
 }
 
 export interface DashboardData {
-  user: NonNullable<Awaited<ReturnType<typeof getUser>>>;
+  user: UserRecord;
   currentWeight: number;
   startWeight: number;
   goalWeight: number;
   toLose: number;
   lost: number;
-  weightProgress: number; // %
-  onTrackDelta: number; // насколько опережаешь/отстаёшь от плана (кг), + = впереди
+  weightProgress: number;
+  onTrackDelta: number;
   completed: number;
   missed: number;
   totalWorkouts: number;
-  programProgress: number; // %
+  programProgress: number;
   currentWeek: number;
   currentMonth: number;
   streak: StreakInfo;
@@ -155,8 +171,8 @@ export async function getDashboardData(): Promise<DashboardData | null> {
   if (!user) return null;
 
   const today = startOfDay(new Date());
-  const plans = await getAllPlansWithMeta(user.programStartDate);
-  const latestWeight = await getLatestWeight();
+  const plans = await getAllPlansWithMeta(user.programStartDate, user.id);
+  const latestWeight = await getLatestWeight(user.id);
   const currentWeight = latestWeight ?? user.currentWeight;
 
   const completed = plans.filter((p) => p.status === "completed").length;
@@ -166,8 +182,8 @@ export async function getDashboardData(): Promise<DashboardData | null> {
   const lost = Math.max(0, user.startWeight - currentWeight);
   const weightProgress = toLose > 0 ? Math.min(100, (lost / toLose) * 100) : 0;
 
-  const target = targetWeightForDate(user.programStartDate, today);
-  const onTrackDelta = target - currentWeight; // + = легче плана
+  const target = targetWeightForDate(user.programStartDate, today, user.startWeight, user.goalWeight);
+  const onTrackDelta = target - currentWeight;
 
   const daysSince = Math.max(0, differenceInCalendarDays(today, startOfDay(user.programStartDate)));
   const currentWeek = Math.min(52, Math.floor(daysSince / 7) + 1);
@@ -216,13 +232,20 @@ export interface FullStats {
 export async function getFullStats(): Promise<FullStats | null> {
   const user = await getUser();
   if (!user) return null;
+  return computeStatsForUser(user);
+}
+
+async function computeStatsForUser(user: UserRecord): Promise<FullStats> {
   const today = startOfDay(new Date());
-  const plans = await getAllPlansWithMeta(user.programStartDate);
+  const plans = await getAllPlansWithMeta(user.programStartDate, user.id);
   const sessions = await prisma.workoutSession.findMany({
-    where: { status: "completed" },
+    where: { userId: user.id, status: "completed" },
     select: { durationSec: true },
   });
-  const weights = await prisma.weightEntry.findMany({ orderBy: { date: "asc" } });
+  const weights = await prisma.weightEntry.findMany({
+    where: { userId: user.id },
+    orderBy: { date: "asc" },
+  });
 
   const completed = plans.filter((p) => p.status === "completed").length;
   const missed = plans.filter((p) => p.status === "missed").length;
@@ -237,7 +260,6 @@ export async function getFullStats(): Promise<FullStats | null> {
   const currentWeight = weights.length ? weights[weights.length - 1].weight : user.currentWeight;
   const weightLost = Math.max(0, user.startWeight - currentWeight);
 
-  // средняя скорость: по фактическим датам записей веса
   let avgWeeklyRate = 0;
   if (weights.length >= 2) {
     const first = weights[0];
@@ -247,7 +269,11 @@ export async function getFullStats(): Promise<FullStats | null> {
   }
 
   const streak = computeStreaks(plans, today);
-  const forecastDate = forecastGoalDate(currentWeight, avgWeeklyRate > 0 ? avgWeeklyRate : 0.9);
+  const forecastDate = forecastGoalDate(
+    currentWeight,
+    avgWeeklyRate > 0 ? avgWeeklyRate : 0.9,
+    user.goalWeight,
+  );
 
   return {
     completed,
@@ -266,4 +292,107 @@ export async function getFullStats(): Promise<FullStats | null> {
   };
 }
 
-export { START_WEIGHT, GOAL_WEIGHT, TOTAL_WORKOUTS };
+// ─────────────────────────────────────────────
+// Экран «Вместе» — сравнение и общий итог
+// ─────────────────────────────────────────────
+export interface PersonSummary {
+  id: number;
+  name: string;
+  username: string;
+  isCurrent: boolean;
+  startWeight: number;
+  currentWeight: number;
+  goalWeight: number;
+  lost: number;
+  toLose: number;
+  weightProgress: number;
+  completed: number;
+  missed: number;
+  currentStreak: number;
+  longestStreak: number;
+  totalHours: number;
+  onTrackDelta: number;
+}
+
+async function summarizePerson(user: UserRecord, isCurrent: boolean): Promise<PersonSummary> {
+  const stats = await computeStatsForUser(user);
+  const today = startOfDay(new Date());
+  const target = targetWeightForDate(user.programStartDate, today, user.startWeight, user.goalWeight);
+  const toLose = user.startWeight - user.goalWeight;
+  const lost = stats.weightLost;
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    isCurrent,
+    startWeight: user.startWeight,
+    currentWeight: stats.currentWeight,
+    goalWeight: user.goalWeight,
+    lost,
+    toLose,
+    weightProgress: toLose > 0 ? Math.min(100, (lost / toLose) * 100) : 0,
+    completed: stats.completed,
+    missed: stats.missed,
+    currentStreak: stats.currentStreak,
+    longestStreak: stats.longestStreak,
+    totalHours: stats.totalHours,
+    onTrackDelta: target - stats.currentWeight,
+  };
+}
+
+export interface ComparisonData {
+  people: PersonSummary[]; // [текущий, партнёр?]
+  combined: {
+    lost: number;
+    completed: number;
+    totalHours: number;
+    workoutsTogether: number; // тренировки, выполненные обоими в один день
+  };
+  hasPartner: boolean;
+}
+
+export async function getComparisonData(): Promise<ComparisonData | null> {
+  const me = await getUser();
+  if (!me) return null;
+  const partner = await getPartner(me.id);
+
+  const people: PersonSummary[] = [await summarizePerson(me, true)];
+  if (partner) people.push(await summarizePerson(partner, false));
+
+  let workoutsTogether = 0;
+  if (partner) {
+    const [mine, theirs] = await Promise.all([
+      prisma.workoutSession.findMany({
+        where: { userId: me.id, status: "completed" },
+        select: { date: true },
+      }),
+      prisma.workoutSession.findMany({
+        where: { userId: partner.id, status: "completed" },
+        select: { date: true },
+      }),
+    ]);
+    const dayKey = (d: Date) => startOfDay(d).getTime();
+    const theirDays = new Set(theirs.map((s) => dayKey(s.date)));
+    const seen = new Set<number>();
+    for (const s of mine) {
+      const k = dayKey(s.date);
+      if (theirDays.has(k) && !seen.has(k)) {
+        seen.add(k);
+        workoutsTogether += 1;
+      }
+    }
+  }
+
+  return {
+    people,
+    combined: {
+      lost: people.reduce((s, p) => s + p.lost, 0),
+      completed: people.reduce((s, p) => s + p.completed, 0),
+      totalHours: people.reduce((s, p) => s + p.totalHours, 0),
+      workoutsTogether,
+    },
+    hasPartner: !!partner,
+  };
+}
+
+export { TOTAL_WORKOUTS };

@@ -21,7 +21,7 @@ export default async function PlanInfoPage() {
   const user = await getUser();
   if (!user) redirect("/login");
   const ul = unitLabel(user.unit);
-  const milestones = monthlyMilestones();
+  const milestones = monthlyMilestones(user.startWeight, user.goalWeight);
 
   return (
     <div>

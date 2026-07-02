@@ -18,7 +18,10 @@ export default async function WeightPage() {
   const unit = user.unit;
   const ul = unitLabel(unit);
 
-  const entries = await prisma.weightEntry.findMany({ orderBy: { date: "asc" } });
+  const entries = await prisma.weightEntry.findMany({
+    where: { userId: user.id },
+    orderBy: { date: "asc" },
+  });
 
   // Строки истории с дельтой
   const rows: WeightRow[] = entries.map((e, i) => ({
@@ -35,7 +38,10 @@ export default async function WeightPage() {
   const keyed = new Map<string, { date: Date; actual: number | null; target: number }>();
   const put = (date: Date, actual: number | null) => {
     const key = date.toISOString().slice(0, 10);
-    const target = toDisplayWeight(targetWeightForDate(start, date), unit);
+    const target = toDisplayWeight(
+      targetWeightForDate(start, date, user.startWeight, user.goalWeight),
+      unit,
+    );
     const existing = keyed.get(key);
     if (existing) {
       if (actual !== null) existing.actual = actual;
@@ -66,7 +72,11 @@ export default async function WeightPage() {
     const weeks = Math.max(1, differenceInCalendarDays(last.date, first.date) / 7);
     avgWeeklyKg = (first.weight - last.weight) / weeks;
   }
-  const forecast = forecastGoalDate(currentKg, avgWeeklyKg > 0.05 ? avgWeeklyKg : 0.9);
+  const forecast = forecastGoalDate(
+    currentKg,
+    avgWeeklyKg > 0.05 ? avgWeeklyKg : 0.9,
+    user.goalWeight,
+  );
 
   return (
     <div>

@@ -9,6 +9,7 @@ import {
   Quote,
   ChevronRight,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { getDashboardData } from "@/lib/data";
 import { quoteOfDay } from "@/lib/quotes";
@@ -207,6 +208,23 @@ export default async function HomePage() {
           />
         </StaggerItem>
       </Stagger>
+
+      {/* Вместе с другом */}
+      <FadeIn delay={0.13}>
+        <Link
+          href="/together"
+          className="glass mt-6 flex items-center gap-4 p-4 active:scale-[0.98]"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-soft to-accent-deep">
+            <Users size={22} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold">Вместе с другом</div>
+            <div className="text-xs text-white/45">Общий прогресс и сравнение</div>
+          </div>
+          <ChevronRight size={18} className="text-white/25" />
+        </Link>
+      </FadeIn>
 
       {/* Цитата дня */}
       <FadeIn delay={0.15}>

@@ -1,10 +1,10 @@
-// Модель годового графика похудения FitJourney: 126 → 80 кг за 12 месяцев.
-// Кривая слегка «фронт-загружена»: в начале при большой массе вес уходит быстрее,
-// ближе к цели темп естественно замедляется — это безопасно и физиологично.
+// Модель графика похудения FitJourney. Кривая слегка «фронт-загружена»:
+// в начале при большой массе вес уходит быстрее, ближе к цели темп замедляется.
+// Функции принимают персональные start/goal, т.к. у разных пользователей свои цифры.
 
+// Значения по умолчанию (владелец): 126 → 80 кг.
 export const START_WEIGHT = 126;
 export const GOAL_WEIGHT = 80;
-export const TOTAL_LOSS = START_WEIGHT - GOAL_WEIGHT; // 46 кг
 export const PROGRAM_DAYS = 365;
 
 /** Доля пройденного пути (0..1) с фронт-загрузкой. */
@@ -14,15 +14,24 @@ function lossFraction(t: number): number {
 }
 
 /** Целевой вес на момент t (0 = старт, 1 = год). */
-export function targetWeightAtProgress(t: number): number {
-  return START_WEIGHT - TOTAL_LOSS * lossFraction(t);
+export function targetWeightAtProgress(
+  t: number,
+  start = START_WEIGHT,
+  goal = GOAL_WEIGHT,
+): number {
+  return start - (start - goal) * lossFraction(t);
 }
 
 /** Целевой вес на дату относительно старта программы. */
-export function targetWeightForDate(startDate: Date, date: Date): number {
+export function targetWeightForDate(
+  startDate: Date,
+  date: Date,
+  start = START_WEIGHT,
+  goal = GOAL_WEIGHT,
+): number {
   const days = (date.getTime() - startDate.getTime()) / 86_400_000;
   const t = days / PROGRAM_DAYS;
-  return targetWeightAtProgress(t);
+  return targetWeightAtProgress(t, start, goal);
 }
 
 export interface Milestone {
@@ -33,20 +42,20 @@ export interface Milestone {
 }
 
 /** Контрольные точки по месяцам (целевой вес на конец месяца). */
-export function monthlyMilestones(): Milestone[] {
+export function monthlyMilestones(start = START_WEIGHT, goal = GOAL_WEIGHT): Milestone[] {
   const list: Milestone[] = [];
   for (let m = 1; m <= 12; m++) {
-    const w = Math.round(targetWeightAtProgress(m / 12) * 10) / 10;
+    const w = Math.round(targetWeightAtProgress(m / 12, start, goal) * 10) / 10;
     list.push({
       month: m,
       targetWeight: w,
-      lostByThen: Math.round((START_WEIGHT - w) * 10) / 10,
+      lostByThen: Math.round((start - w) * 10) / 10,
       label: `Месяц ${m}`,
     });
   }
   // Гарантируем ровную цель в финале
-  list[11].targetWeight = GOAL_WEIGHT;
-  list[11].lostByThen = TOTAL_LOSS;
+  list[11].targetWeight = goal;
+  list[11].lostByThen = Math.round((start - goal) * 10) / 10;
   return list;
 }
 
@@ -75,10 +84,11 @@ export const FAST_LOSS_ADVICE = [
 export function forecastGoalDate(
   currentWeight: number,
   weeklyRate: number,
+  goal = GOAL_WEIGHT,
   from: Date = new Date(),
 ): Date | null {
-  if (weeklyRate <= 0 || currentWeight <= GOAL_WEIGHT) return null;
-  const weeksLeft = (currentWeight - GOAL_WEIGHT) / weeklyRate;
+  if (weeklyRate <= 0 || currentWeight <= goal) return null;
+  const weeksLeft = (currentWeight - goal) / weeklyRate;
   const d = new Date(from);
   d.setDate(d.getDate() + Math.round(weeksLeft * 7));
   return d;

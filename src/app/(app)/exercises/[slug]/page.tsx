@@ -30,6 +30,11 @@ export default async function ExerciseDetailPage({
   const ex = await prisma.exercise.findUnique({ where: { slug } });
   if (!ex) notFound();
 
+  const favorite = await prisma.favorite.findUnique({
+    where: { userId_exerciseSlug: { userId: session.uid, exerciseSlug: slug } },
+  });
+  const isFavorite = !!favorite;
+
   let altSlugs: string[] = [];
   try {
     altSlugs = JSON.parse(ex.alternativeSlugs) as string[];
@@ -51,7 +56,7 @@ export default async function ExerciseDetailPage({
             <ChevronLeft size={20} />
           </Link>
           <div className="flex-1" />
-          <FavoriteToggle slug={ex.slug} initial={ex.isFavorite} />
+          <FavoriteToggle slug={ex.slug} initial={isFavorite} />
         </div>
 
         <div className="mb-4">

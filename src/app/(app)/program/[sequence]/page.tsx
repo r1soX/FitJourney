@@ -44,7 +44,7 @@ export default async function PlanDetailPage({
     where: { sequence: seq },
     include: {
       exercises: { orderBy: { order: "asc" }, include: { exercise: true } },
-      session: true,
+      sessions: { where: { userId: user.id } },
     },
   });
   if (!plan) notFound();
@@ -57,7 +57,7 @@ export default async function PlanDetailPage({
     (e) => !["warmup", "cardio", "cooldown"].includes(e.block),
   );
 
-  const session = plan.session;
+  const session = plan.sessions[0] ?? null;
   const isCompleted = session?.status === "completed";
   const inProgress = session?.status === "in_progress";
 

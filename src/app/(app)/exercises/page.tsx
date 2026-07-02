@@ -11,16 +11,18 @@ export default async function ExercisesPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const exercises = await prisma.exercise.findMany({
-    orderBy: [{ category: "asc" }, { name: "asc" }],
-  });
+  const [exercises, favorites] = await Promise.all([
+    prisma.exercise.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    prisma.favorite.findMany({ where: { userId: session.uid }, select: { exerciseSlug: true } }),
+  ]);
+  const favSet = new Set(favorites.map((f) => f.exerciseSlug));
   const lite: ExerciseLite[] = exercises.map((e) => ({
     slug: e.slug,
     name: e.name,
     muscleGroup: e.muscleGroup,
     equipment: e.equipment,
     category: e.category,
-    isFavorite: e.isFavorite,
+    isFavorite: favSet.has(e.slug),
   }));
 
   return (

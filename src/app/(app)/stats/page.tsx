@@ -30,7 +30,7 @@ export default async function StatsPage() {
   if (!stats) return null;
   const ul = unitLabel(user.unit);
 
-  const achievements = await prisma.achievement.findMany();
+  const achievements = await prisma.achievement.findMany({ where: { userId: user.id } });
   const unlocked = achievements.filter((a) => a.unlockedAt).length;
 
   return (

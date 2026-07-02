@@ -44,7 +44,10 @@ export default async function AchievementsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const achievements = await prisma.achievement.findMany({ orderBy: { id: "asc" } });
+  const achievements = await prisma.achievement.findMany({
+    where: { userId: session.uid },
+    orderBy: { id: "asc" },
+  });
   const unlocked = achievements.filter((a) => a.unlockedAt).length;
 
   return (

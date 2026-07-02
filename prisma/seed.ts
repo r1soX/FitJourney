@@ -1,5 +1,5 @@
-// Заполнение базы: пользователь, библиотека упражнений, годовая программа,
-// достижения и стартовая запись веса.
+// Заполнение базы: два пользователя (владелец + друг), общая библиотека упражнений
+// и годовая программа, персональные достижения и стартовые записи веса.
 
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -10,42 +10,104 @@ import { START_WEIGHT, GOAL_WEIGHT } from "../src/lib/program/weightPlan";
 
 const prisma = new PrismaClient();
 
+async function upsertUser(opts: {
+  username: string;
+  password: string;
+  name: string;
+  age: number;
+  heightCm: number;
+  startWeight: number;
+  goalWeight: number;
+  programStart: Date;
+}) {
+  const passwordHash = await bcrypt.hash(opts.password, 10);
+  const user = await prisma.user.upsert({
+    where: { username: opts.username },
+    update: { passwordHash },
+    create: {
+      username: opts.username,
+      passwordHash,
+      name: opts.name,
+      age: opts.age,
+      heightCm: opts.heightCm,
+      startWeight: opts.startWeight,
+      currentWeight: opts.startWeight,
+      goalWeight: opts.goalWeight,
+      unit: "kg",
+      theme: "dark",
+      programStartDate: opts.programStart,
+    },
+  });
+
+  // Достижения — по одному комплекту на пользователя
+  for (const a of ACHIEVEMENTS) {
+    await prisma.achievement.upsert({
+      where: { userId_key: { userId: user.id, key: a.key } },
+      update: { title: a.title, description: a.description, icon: a.icon, tier: a.tier },
+      create: {
+        userId: user.id,
+        key: a.key,
+        title: a.title,
+        description: a.description,
+        icon: a.icon,
+        tier: a.tier,
+      },
+    });
+  }
+
+  // Стартовая запись веса
+  const hasWeight = await prisma.weightEntry.count({ where: { userId: user.id } });
+  if (hasWeight === 0) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    await prisma.weightEntry.create({
+      data: {
+        userId: user.id,
+        date: startOfDay,
+        weight: opts.startWeight,
+        note: "Старт программы 💪",
+      },
+    });
+  }
+
+  return user;
+}
+
 async function main() {
   console.log("🌱 Заполнение базы данных FitJourney...");
 
-  const username = process.env.APP_USERNAME || "r1soX";
-  const password = process.env.APP_PASSWORD || "15253565vV";
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  // ── Пользователь ──
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  // Старт программы — ближайший понедельник (сегодня, если сегодня понедельник),
-  // чтобы недели ложились ровно и не было «пропущенных» дней до старта.
-  const programStart = new Date(startOfDay);
+  // Старт программы — ближайший понедельник (общий для обоих)
+  const programStart = new Date();
+  programStart.setHours(0, 0, 0, 0);
   const dow = (programStart.getDay() + 6) % 7; // 0 = понедельник
   if (dow !== 0) programStart.setDate(programStart.getDate() + (7 - dow));
 
-  await prisma.user.upsert({
-    where: { username },
-    update: { passwordHash },
-    create: {
-      username,
-      passwordHash,
-      name: "Атлет",
-      age: 26,
-      heightCm: 185,
-      startWeight: START_WEIGHT,
-      currentWeight: START_WEIGHT,
-      goalWeight: GOAL_WEIGHT,
-      unit: "kg",
-      theme: "dark",
-      programStartDate: programStart,
-    },
+  // ── Пользователи ──
+  const owner = await upsertUser({
+    username: process.env.APP_USERNAME || "r1soX",
+    password: process.env.APP_PASSWORD || "15253565vV",
+    name: "Атлет",
+    age: 26,
+    heightCm: 185,
+    startWeight: START_WEIGHT,
+    goalWeight: GOAL_WEIGHT,
+    programStart,
   });
-  console.log(`✓ Пользователь «${username}» готов`);
+  console.log(`✓ Пользователь «${owner.username}» готов`);
 
-  // ── Библиотека упражнений ──
+  const friend = await upsertUser({
+    username: process.env.APP2_USERNAME || "lexa",
+    password: process.env.APP2_PASSWORD || "123456qq",
+    name: "Лёха",
+    age: 26,
+    heightCm: 180,
+    startWeight: 100,
+    goalWeight: 80,
+    programStart,
+  });
+  console.log(`✓ Пользователь «${friend.username}» готов`);
+
+  // ── Библиотека упражнений (общая) ──
   await prisma.workoutExercise.deleteMany();
   await prisma.workoutPlan.deleteMany();
   await prisma.exercise.deleteMany();
@@ -72,7 +134,7 @@ async function main() {
     exerciseIdBySlug.set(ex.slug, ex.id);
   }
 
-  // ── Годовая программа ──
+  // ── Годовая программа (общая) ──
   const program = generateProgram();
   let itemCount = 0;
   for (const plan of program) {
@@ -99,10 +161,7 @@ async function main() {
     const items = plan.exercises
       .map((it) => {
         const exerciseId = exerciseIdBySlug.get(it.slug);
-        if (!exerciseId) {
-          console.warn(`⚠ Не найдено упражнение: ${it.slug}`);
-          return null;
-        }
+        if (!exerciseId) return null;
         return {
           planId: created.id,
           exerciseId,
@@ -121,35 +180,6 @@ async function main() {
     itemCount += items.length;
   }
   console.log(`✓ Создано тренировок: ${program.length}, элементов: ${itemCount}`);
-
-  // ── Достижения ──
-  for (const a of ACHIEVEMENTS) {
-    await prisma.achievement.upsert({
-      where: { key: a.key },
-      update: { title: a.title, description: a.description, icon: a.icon, tier: a.tier },
-      create: {
-        key: a.key,
-        title: a.title,
-        description: a.description,
-        icon: a.icon,
-        tier: a.tier,
-      },
-    });
-  }
-  console.log(`✓ Достижений: ${ACHIEVEMENTS.length}`);
-
-  // ── Стартовая запись веса ──
-  const existingWeight = await prisma.weightEntry.count();
-  if (existingWeight === 0) {
-    await prisma.weightEntry.create({
-      data: {
-        date: startOfDay,
-        weight: START_WEIGHT,
-        note: "Старт программы 💪",
-      },
-    });
-    console.log("✓ Добавлена стартовая запись веса");
-  }
 
   console.log("✅ Готово!");
 }

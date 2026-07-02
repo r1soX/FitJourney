@@ -9,6 +9,7 @@ import {
   LogOut,
   ChevronRight,
   HeartPulse,
+  Users,
 } from "lucide-react";
 import { getUser } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -17,6 +18,7 @@ import { FadeIn } from "@/components/ui/Motion";
 export const dynamic = "force-dynamic";
 
 const ITEMS = [
+  { href: "/together", label: "Вместе", desc: "Общий прогресс с другом", icon: Users },
   { href: "/stats", label: "Статистика", desc: "Прогресс в цифрах", icon: BarChart3 },
   { href: "/history", label: "История", desc: "Все тренировки", icon: History },
   { href: "/exercises", label: "Упражнения", desc: "Библиотека и техника", icon: BookOpen },
