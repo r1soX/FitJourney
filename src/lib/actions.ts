@@ -145,6 +145,62 @@ export async function finishWorkout(
   revalidatePath("/together");
 }
 
+// Завершение тренировки одним вызовом: сохраняем все логи подходов и закрываем
+// сессию. Используется бегунком тренировки, в т.ч. для дозаписи после офлайна.
+export async function completeWorkout(
+  sessionId: number,
+  payload: {
+    logs: { id: number; status: string; setsData: unknown }[];
+    notes?: string;
+    feelings?: string;
+    difficulty?: number | null;
+    mood?: number | null;
+    pain?: number | null;
+    durationSec?: number;
+  },
+): Promise<void> {
+  await requireUid();
+  const now = new Date();
+  const session = await prisma.workoutSession.findUnique({ where: { id: sessionId } });
+  if (!session) throw new Error("Сессия не найдена");
+
+  for (const l of payload.logs) {
+    await prisma.exerciseLog
+      .update({
+        where: { id: l.id },
+        data: { status: l.status, setsData: JSON.stringify(l.setsData) },
+      })
+      .catch(() => {});
+  }
+
+  const durationSec =
+    payload.durationSec ??
+    (session.startedAt
+      ? Math.round((now.getTime() - session.startedAt.getTime()) / 1000)
+      : null);
+
+  await prisma.workoutSession.update({
+    where: { id: sessionId },
+    data: {
+      status: "completed",
+      endedAt: now,
+      durationSec: durationSec ?? undefined,
+      notes: payload.notes ?? "",
+      feelings: payload.feelings ?? "",
+      difficulty: payload.difficulty ?? null,
+      mood: payload.mood ?? null,
+      pain: payload.pain ?? null,
+    },
+  });
+
+  await syncAchievements();
+  revalidatePath("/");
+  revalidatePath("/calendar");
+  revalidatePath("/history");
+  revalidatePath("/stats");
+  revalidatePath("/together");
+}
+
 export async function skipWorkout(planId: number, note = ""): Promise<void> {
   const uid = await requireUid();
   await prisma.workoutSession.upsert({

@@ -17,10 +17,17 @@ import {
   Dumbbell,
   Trophy,
 } from "lucide-react";
-import { updateExerciseLog, replaceExercise, finishWorkout } from "@/lib/actions";
+import { updateExerciseLog, replaceExercise, completeWorkout } from "@/lib/actions";
 import { formatClock, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { RestTimer } from "./RestTimer";
+import {
+  queuePendingFinish,
+  saveProgress,
+  loadProgress,
+  clearProgress,
+  type FinishPayload,
+} from "./offline";
 
 interface SetData {
   reps: string;
@@ -91,13 +98,30 @@ export function WorkoutRunner({ data }: { data: RunnerData }) {
     data.startedAtISO ? new Date(data.startedAtISO).getTime() : Date.now(),
   );
 
-  // Таймер тренировки
+  // Таймер тренировки — привязан к серверному времени старта сессии
   useEffect(() => {
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTime.current) / 1000));
     }, 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Восстановление прогресса из localStorage (перезагрузка страницы / офлайн)
+  useEffect(() => {
+    if (data.status === "completed") return;
+    const saved = loadProgress(data.sessionId);
+    if (saved && Array.isArray(saved.logs) && (saved.logs as RunnerLog[]).length === data.logs.length) {
+      setLogs(saved.logs as RunnerLog[]);
+      if (typeof saved.index === "number") setIndex(saved.index);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Автосохранение прогресса локально (не теряется при потере сети)
+  useEffect(() => {
+    if (data.status === "completed") return;
+    saveProgress(data.sessionId, { logs, index });
+  }, [logs, index, data.sessionId, data.status]);
 
   const current = logs[index];
   const doneCount = logs.filter(
@@ -193,10 +217,19 @@ export function WorkoutRunner({ data }: { data: RunnerData }) {
         elapsed={elapsed}
         readOnly={data.status === "completed"}
         onSubmit={async (form) => {
-          await finishWorkout(data.sessionId, {
+          const payload: FinishPayload = {
+            logs: logs.map((l) => ({ id: l.id, status: l.status, setsData: l.sets })),
             ...form,
             durationSec: elapsed,
-          });
+          };
+          try {
+            await completeWorkout(data.sessionId, payload);
+            clearProgress(data.sessionId);
+          } catch {
+            // Нет сети — ставим в очередь на автодозапись
+            queuePendingFinish(data.sessionId, payload);
+            clearProgress(data.sessionId);
+          }
           router.push("/");
           router.refresh();
         }}
@@ -330,14 +363,14 @@ export function WorkoutRunner({ data }: { data: RunnerData }) {
                     value={set.reps}
                     onChange={(e) => updateSet(i, { reps: e.target.value })}
                     placeholder={current.targetReps}
-                    className="h-10 rounded-xl border border-white/10 bg-white/[0.04] px-2 text-center text-sm outline-none focus:border-accent/50"
+                    className="h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-2 text-center text-sm outline-none focus:border-accent/50"
                   />
                   <input
                     inputMode="decimal"
                     value={set.weight}
                     onChange={(e) => updateSet(i, { weight: e.target.value })}
                     placeholder="кг"
-                    className="h-10 rounded-xl border border-white/10 bg-white/[0.04] px-2 text-center text-sm outline-none focus:border-accent/50"
+                    className="h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-2 text-center text-sm outline-none focus:border-accent/50"
                   />
                   <button
                     onClick={() => toggleSetDone(i)}
@@ -410,22 +443,42 @@ function TimedBlock({ log }: { log: RunnerLog }) {
   }, [log.targetReps]);
   const [running, setRunning] = useState(false);
   const [remaining, setRemaining] = useState(initial);
+  const endRef = useRef<number | null>(null);
 
+  // Таймер на абсолютной метке времени — не сбивается, когда экран гаснет
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(id);
-          setRunning(false);
-          if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
-          return 0;
+    const tick = () => {
+      if (endRef.current == null) return;
+      const rem = Math.max(0, Math.round((endRef.current - Date.now()) / 1000));
+      setRemaining(rem);
+      if (rem <= 0) {
+        setRunning(false);
+        endRef.current = null;
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate([120, 60, 120]);
         }
-        return r - 1;
-      });
-    }, 1000);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, [running]);
+
+  function toggle() {
+    if (running) {
+      setRunning(false);
+      endRef.current = null;
+    } else {
+      endRef.current = Date.now() + (remaining || initial) * 1000;
+      setRunning(true);
+    }
+  }
+  function reset() {
+    setRunning(false);
+    endRef.current = null;
+    setRemaining(initial);
+  }
 
   return (
     <div className="glass mt-4 flex flex-col items-center p-6">
@@ -437,18 +490,13 @@ function TimedBlock({ log }: { log: RunnerLog }) {
           <div className="my-3 text-5xl font-bold tabular">{formatClock(Math.max(0, remaining))}</div>
           <div className="flex gap-3">
             <button
-              onClick={() => setRunning((r) => !r)}
+              onClick={() => (remaining === 0 ? reset() : toggle())}
               className="btn-ghost px-6"
             >
               {running ? "Пауза" : remaining === 0 ? "Заново" : "Старт"}
             </button>
-            {remaining === 0 && (
-              <button
-                onClick={() => {
-                  setRemaining(initial);
-                }}
-                className="btn-ghost"
-              >
+            {!running && remaining !== initial && (
+              <button onClick={reset} className="btn-ghost">
                 Сброс
               </button>
             )}

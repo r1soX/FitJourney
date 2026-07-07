@@ -1,5 +1,5 @@
-// FitJourney service worker — базовый офлайн-кэш (app shell).
-const CACHE = "fitjourney-v1";
+// FitJourney service worker — офлайн-кэш (app shell + посещённые страницы).
+const CACHE = "fitjourney-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -26,10 +26,21 @@ self.addEventListener("fetch", (event) => {
   // Не кэшируем API и аутентификацию — всегда сеть
   if (url.pathname.startsWith("/api/")) return;
 
-  // Навигационные запросы: сеть, при провале — кэш главной
+  // Навигационные запросы: сеть-первым, кэшируем успешные ответы,
+  // при офлайне отдаём кэш этой же страницы (или главную как запас).
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match(request).then((r) => r || caches.match("/"))),
+      fetch(request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() =>
+          caches.match(request).then((r) => r || caches.match("/")),
+        ),
     );
     return;
   }

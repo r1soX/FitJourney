@@ -359,27 +359,22 @@ export async function getComparisonData(): Promise<ComparisonData | null> {
   const people: PersonSummary[] = [await summarizePerson(me, true)];
   if (partner) people.push(await summarizePerson(partner, false));
 
+  // «Общие тренировки» — одна и та же тренировка (план), выполненная обоими.
   let workoutsTogether = 0;
   if (partner) {
     const [mine, theirs] = await Promise.all([
       prisma.workoutSession.findMany({
-        where: { userId: me.id, status: "completed" },
-        select: { date: true },
+        where: { userId: me.id, status: "completed", planId: { not: null } },
+        select: { planId: true },
       }),
       prisma.workoutSession.findMany({
-        where: { userId: partner.id, status: "completed" },
-        select: { date: true },
+        where: { userId: partner.id, status: "completed", planId: { not: null } },
+        select: { planId: true },
       }),
     ]);
-    const dayKey = (d: Date) => startOfDay(d).getTime();
-    const theirDays = new Set(theirs.map((s) => dayKey(s.date)));
-    const seen = new Set<number>();
+    const theirPlans = new Set(theirs.map((s) => s.planId));
     for (const s of mine) {
-      const k = dayKey(s.date);
-      if (theirDays.has(k) && !seen.has(k)) {
-        seen.add(k);
-        workoutsTogether += 1;
-      }
+      if (theirPlans.has(s.planId)) workoutsTogether += 1;
     }
   }
 

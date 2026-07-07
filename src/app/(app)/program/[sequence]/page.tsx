@@ -195,16 +195,16 @@ export default async function PlanDetailPage({
 
       {/* Действие */}
       <div className="sticky bottom-[calc(var(--nav-height)+var(--safe-bottom))] mt-6">
-        {inProgress ? (
+        {isCompleted ? (
+          <Link href={`/workout/${session!.id}`} className="btn-ghost w-full">
+            <CheckCircle2 size={18} className="text-emerald-400" /> Тренировка завершена — посмотреть результаты
+          </Link>
+        ) : inProgress ? (
           <Link href={`/workout/${session!.id}`} className="btn-primary w-full">
             Продолжить тренировку
           </Link>
         ) : (
-          <StartWorkoutButton
-            planId={plan.id}
-            label={isCompleted ? "Повторить тренировку" : "Начать тренировку"}
-            className="w-full"
-          />
+          <StartWorkoutButton planId={plan.id} label="Начать тренировку" className="w-full" />
         )}
       </div>
       <div className="h-4" />

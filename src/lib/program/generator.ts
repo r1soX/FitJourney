@@ -1,9 +1,10 @@
 // Генератор годовой программы тренировок FitJourney.
-// 3 тренировки в неделю (Пн/Ср/Пт), 52 недели, 6 фаз с безопасной прогрессией.
-// Программа рассчитана на мужчину 26 лет, 185 см, старт 126 кг, цель 80 кг.
+// Сплит по дням: Пн — Верх тела, Ср — Пресс и кардио, Пт — Ноги.
+// 52 недели, 6 фаз с ростом интенсивности. Программа: муж, 26 лет, 185 см, 126 → 80 кг.
 //
-// ВАЖНО: используются только «незаметные» упражнения — тренажёры, гантели и блоки,
-// работа стоя или сидя на одной станции. Без упражнений на полу и «толчковых» движений.
+// ВАЖНО: только «незаметные» упражнения — тренажёры, гантели и блоки, работа
+// стоя или сидя на одной станции. Без упражнений на полу и «толчковых» движений.
+// Акцент на кардио: среда — отдельный день пресса и большого кардио.
 
 import { EXERCISE_BY_SLUG } from "./exercises";
 
@@ -27,13 +28,13 @@ interface Phase {
   months: [number, number];
   intro: string;
   restAdvice: string;
-  days: [DayTpl, DayTpl, DayTpl];
+  days: [DayTpl, DayTpl, DayTpl]; // [Пн: верх, Ср: пресс+кардио, Пт: ноги]
 }
 
-// ── Кардио по месяцам (минуты финишного кардио) — с акцентом на объём ──
+// ── Базовое кардио по месяцам (минуты, для дня «Верх») ──
 const CARDIO_MIN: Record<number, number> = {
-  1: 20, 2: 22, 3: 25, 4: 27, 5: 30, 6: 32,
-  7: 34, 8: 36, 9: 38, 10: 40, 11: 42, 12: 45,
+  1: 18, 2: 20, 3: 22, 4: 24, 5: 26, 6: 28,
+  7: 30, 8: 32, 9: 34, 10: 36, 11: 38, 12: 40,
 };
 
 // Распределение недель по месяцам (сумма = 52)
@@ -41,49 +42,53 @@ const MONTH_WEEKS = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5];
 
 const WEEKDAYS = [1, 3, 5]; // Пн, Ср, Пт
 
+const UPPER = "Верх тела";
+const CORE = "Пресс и кардио";
+const LEGS = "Ноги";
+
 // ─────────────────────────────────────────────
-// Определения фаз (только незаметные упражнения)
+// Определения фаз (сплит верх / пресс+кардио / ноги)
 // ─────────────────────────────────────────────
 const PHASES: Phase[] = [
   {
     name: "Адаптация",
     months: [1, 2],
     intro:
-      "Учимся технике и строим привычку на тренажёрах. Всё сидя или стоя на одной станции, умеренные веса, много повторов.",
+      "Учимся технике на тренажёрах. Пн — верх тела, Ср — пресс и кардио, Пт — ноги. Умеренные веса, много повторов.",
     restAdvice:
       "Между тренировками — минимум 1 день отдыха. Сон 7–9 ч, вода 2.5–3 л. Не гонись за весами — гонись за техникой.",
     days: [
       {
-        title: "Всё тело A",
-        focus: "Освоение базовых движений",
+        title: UPPER,
+        focus: "Грудь, спина, плечи, руки",
         items: [
-          { slug: "leg-press", sets: 3, reps: "12-15", rest: 75 },
           { slug: "machine-chest-press", sets: 3, reps: "12-15", rest: 75 },
           { slug: "lat-pulldown", sets: 3, reps: "12-15", rest: 75 },
-          { slug: "leg-curl", sets: 3, reps: "12-15", rest: 60 },
-          { slug: "machine-crunch", sets: 3, reps: "12-15", rest: 45, block: "core" },
-        ],
-      },
-      {
-        title: "Всё тело B",
-        focus: "Ноги, спина и плечи",
-        items: [
-          { slug: "goblet-squat", sets: 3, reps: "12-15", rest: 75 },
-          { slug: "seated-cable-row", sets: 3, reps: "12-15", rest: 75 },
           { slug: "machine-shoulder-press", sets: 3, reps: "12-15", rest: 75 },
-          { slug: "romanian-deadlift-db", sets: 3, reps: "12", rest: 60 },
-          { slug: "pallof-press", sets: 3, reps: "10/сторону", rest: 45, block: "core" },
+          { slug: "seated-cable-row", sets: 3, reps: "12-15", rest: 75 },
+          { slug: "triceps-pushdown", sets: 3, reps: "12-15", rest: 45, block: "superset-a" },
+          { slug: "db-curl", sets: 3, reps: "12-15", rest: 45, block: "superset-b" },
         ],
       },
       {
-        title: "Всё тело C",
-        focus: "Объём и мышечный тонус",
+        title: CORE,
+        focus: "Пресс, кор и большое кардио",
         items: [
-          { slug: "hack-squat", sets: 3, reps: "12-15", rest: 75 },
-          { slug: "pec-deck", sets: 3, reps: "12-15", rest: 60 },
-          { slug: "machine-row", sets: 3, reps: "12-15", rest: 75 },
+          { slug: "machine-crunch", sets: 3, reps: "15", rest: 45, block: "core" },
+          { slug: "pallof-press", sets: 3, reps: "10/сторону", rest: 45, block: "core" },
+          { slug: "cable-crunch", sets: 3, reps: "15", rest: 45, block: "core" },
+          { slug: "rotary-torso", sets: 3, reps: "12/сторону", rest: 45, block: "core" },
+        ],
+      },
+      {
+        title: LEGS,
+        focus: "Квадрицепс, бицепс бедра, икры",
+        items: [
+          { slug: "leg-press", sets: 3, reps: "12-15", rest: 90 },
+          { slug: "leg-extension", sets: 3, reps: "12-15", rest: 60, block: "superset-a" },
+          { slug: "leg-curl", sets: 3, reps: "12-15", rest: 60, block: "superset-b" },
+          { slug: "hack-squat", sets: 3, reps: "12-15", rest: 90 },
           { slug: "calf-raise", sets: 3, reps: "15", rest: 45 },
-          { slug: "cable-crunch", sets: 3, reps: "12", rest: 45, block: "core" },
         ],
       },
     ],
@@ -92,41 +97,42 @@ const PHASES: Phase[] = [
     name: "База",
     months: [3, 4],
     intro:
-      "Вводим гантели (жим, тяга, наклон) наряду с тренажёрами. Повторов чуть меньше, техника — прежний приоритет.",
+      "Добавляем гантели (жим, тяга, наклон) к тренажёрам. Повторов чуть меньше, техника — прежний приоритет.",
     restAdvice:
       "Держи 1 день отдыха между тренировками. Добавь 7–8 тыс. шагов в дни отдыха. Следи за белком в питании.",
     days: [
       {
-        title: "Всё тело — Сила A",
-        focus: "Присед, жим, тяга",
+        title: UPPER,
+        focus: "Грудь, спина, плечи, руки",
         items: [
-          { slug: "goblet-squat", sets: 3, reps: "10-12", rest: 90 },
           { slug: "db-bench-press", sets: 3, reps: "10-12", rest: 90 },
-          { slug: "lat-pulldown", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "romanian-deadlift-db", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "machine-crunch", sets: 3, reps: "15", rest: 45, block: "core" },
+          { slug: "lat-pulldown", sets: 3, reps: "10-12", rest: 90 },
+          { slug: "overhead-db-press", sets: 3, reps: "10-12", rest: 75 },
+          { slug: "machine-row", sets: 3, reps: "10-12", rest: 75 },
+          { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-a" },
+          { slug: "hammer-curl", sets: 3, reps: "12", rest: 45, block: "superset-b" },
         ],
       },
       {
-        title: "Всё тело — Сила B",
-        focus: "Ноги и плечи",
+        title: CORE,
+        focus: "Пресс, кор и большое кардио",
         items: [
-          { slug: "leg-press", sets: 3, reps: "10-12", rest: 90 },
-          { slug: "overhead-db-press", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "seated-cable-row", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "leg-extension", sets: 3, reps: "12", rest: 60 },
+          { slug: "captains-chair-raise", sets: 3, reps: "12", rest: 45, block: "core" },
+          { slug: "cable-woodchop", sets: 3, reps: "12/сторону", rest: 45, block: "core" },
+          { slug: "machine-crunch", sets: 3, reps: "15", rest: 45, block: "core" },
           { slug: "pallof-press", sets: 3, reps: "10/сторону", rest: 45, block: "core" },
         ],
       },
       {
-        title: "Всё тело — Сила C",
-        focus: "Грудь, спина, руки",
+        title: LEGS,
+        focus: "Квадрицепс, бицепс бедра, икры",
         items: [
-          { slug: "hack-squat", sets: 3, reps: "10-12", rest: 90 },
-          { slug: "incline-db-press", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "db-row", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "db-curl", sets: 3, reps: "12", rest: 45, block: "superset-a" },
-          { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-b" },
+          { slug: "goblet-squat", sets: 3, reps: "10-12", rest: 90 },
+          { slug: "romanian-deadlift-db", sets: 3, reps: "10-12", rest: 90 },
+          { slug: "leg-press", sets: 3, reps: "12", rest: 75 },
+          { slug: "leg-curl", sets: 3, reps: "12", rest: 60, block: "superset-a" },
+          { slug: "leg-extension", sets: 3, reps: "12", rest: 60, block: "superset-b" },
+          { slug: "calf-raise", sets: 3, reps: "15", rest: 45 },
         ],
       },
     ],
@@ -135,43 +141,43 @@ const PHASES: Phase[] = [
     name: "Развитие",
     months: [5, 6],
     intro:
-      "Сплит Верх / Низ / Всё тело. Появляются суперсеты и первые интервалы кардио. Растёт объём.",
+      "Больше объёма и суперсетов, появляются интервалы кардио. Сплит тот же: верх / пресс+кардио / ноги.",
     restAdvice:
       "Восстановление критично: сон и питание держат прогресс. Если суставы ноют — снизь вес, не пропускай разминку.",
     days: [
       {
-        title: "Верх тела",
+        title: UPPER,
         focus: "Грудь, спина, плечи, руки",
         items: [
-          { slug: "machine-chest-press", sets: 3, reps: "8-12", rest: 90 },
-          { slug: "lat-pulldown", sets: 3, reps: "8-12", rest: 90 },
+          { slug: "machine-chest-press", sets: 4, reps: "8-12", rest: 90 },
+          { slug: "lat-pulldown", sets: 4, reps: "8-12", rest: 90 },
           { slug: "overhead-db-press", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "seated-cable-row", sets: 3, reps: "10-12", rest: 75 },
+          { slug: "machine-row", sets: 3, reps: "10-12", rest: 75 },
           { slug: "db-curl", sets: 3, reps: "12", rest: 45, block: "superset-a" },
           { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-b" },
         ],
       },
       {
-        title: "Низ тела",
-        focus: "Ноги",
+        title: CORE,
+        focus: "Пресс, кор и интервалы кардио",
         items: [
-          { slug: "goblet-squat", sets: 4, reps: "8-12", rest: 90 },
-          { slug: "romanian-deadlift-db", sets: 3, reps: "10-12", rest: 90 },
-          { slug: "leg-press", sets: 3, reps: "12", rest: 75 },
-          { slug: "leg-curl", sets: 3, reps: "12", rest: 60 },
-          { slug: "calf-raise", sets: 4, reps: "15", rest: 45 },
-          { slug: "machine-crunch", sets: 3, reps: "15", rest: 45, block: "core" },
+          { slug: "cable-crunch", sets: 3, reps: "15", rest: 45, block: "core" },
+          { slug: "captains-chair-raise", sets: 3, reps: "12", rest: 45, block: "core" },
+          { slug: "pallof-press", sets: 3, reps: "10/сторону", rest: 45, block: "core" },
+          { slug: "rotary-torso", sets: 3, reps: "15/сторону", rest: 45, block: "core" },
+          { slug: "cable-woodchop", sets: 3, reps: "12/сторону", rest: 45, block: "core" },
         ],
       },
       {
-        title: "Всё тело + интервалы",
-        focus: "Силовая база и жиросжигание",
+        title: LEGS,
+        focus: "Квадрицепс, бицепс бедра, икры",
         items: [
-          { slug: "hack-squat", sets: 3, reps: "10", rest: 90 },
-          { slug: "db-bench-press", sets: 3, reps: "10", rest: 90 },
-          { slug: "db-row", sets: 3, reps: "10", rest: 75 },
-          { slug: "lateral-raise", sets: 3, reps: "12-15", rest: 45 },
-          { slug: "pallof-press", sets: 3, reps: "10/сторону", rest: 45, block: "core" },
+          { slug: "hack-squat", sets: 4, reps: "8-12", rest: 90 },
+          { slug: "romanian-deadlift-db", sets: 3, reps: "10-12", rest: 90 },
+          { slug: "leg-press", sets: 3, reps: "12", rest: 75 },
+          { slug: "leg-extension", sets: 3, reps: "12", rest: 45, block: "superset-a" },
+          { slug: "leg-curl", sets: 3, reps: "12", rest: 45, block: "superset-b" },
+          { slug: "calf-raise", sets: 4, reps: "15", rest: 45 },
         ],
       },
     ],
@@ -180,39 +186,39 @@ const PHASES: Phase[] = [
     name: "Сила и жиросжигание",
     months: [7, 8],
     intro:
-      "Классический сплит Жим / Тяга / Ноги (Push-Pull-Legs). Больше базовых движений и рабочих весов.",
+      "Больше рабочих весов на базовых движениях, меньше повторов. Пресс и кардио — прежний акцент в среду.",
     restAdvice:
       "Пик нагрузки — держи режим сна. Разминочные подходы обязательны перед тяжёлыми упражнениями.",
     days: [
       {
-        title: "Жим (грудь, плечи, трицепс)",
-        focus: "Толкающие мышцы",
+        title: UPPER,
+        focus: "Грудь, спина, плечи, руки",
         items: [
           { slug: "db-bench-press", sets: 4, reps: "6-10", rest: 120 },
-          { slug: "machine-chest-press", sets: 3, reps: "8-12", rest: 90 },
-          { slug: "overhead-db-press", sets: 3, reps: "8-10", rest: 90 },
-          { slug: "lateral-raise", sets: 3, reps: "12-15", rest: 45 },
-          { slug: "triceps-pushdown", sets: 3, reps: "10-12", rest: 60 },
-        ],
-      },
-      {
-        title: "Тяга (спина, бицепс)",
-        focus: "Тянущие мышцы",
-        items: [
           { slug: "lat-pulldown", sets: 4, reps: "8-10", rest: 90 },
-          { slug: "seated-cable-row", sets: 3, reps: "8-12", rest: 90 },
-          { slug: "db-row", sets: 3, reps: "8-12", rest: 75 },
-          { slug: "face-pull", sets: 3, reps: "15", rest: 45 },
-          { slug: "db-curl", sets: 3, reps: "10-12", rest: 45, block: "superset-a" },
+          { slug: "machine-shoulder-press", sets: 3, reps: "8-10", rest: 90 },
+          { slug: "seated-cable-row", sets: 3, reps: "8-12", rest: 75 },
+          { slug: "lateral-raise", sets: 3, reps: "12-15", rest: 45 },
+          { slug: "triceps-pushdown", sets: 3, reps: "10-12", rest: 45, block: "superset-a" },
           { slug: "hammer-curl", sets: 3, reps: "10-12", rest: 45, block: "superset-b" },
         ],
       },
       {
-        title: "Ноги",
-        focus: "Квадрицепс, бицепс бедра",
+        title: CORE,
+        focus: "Пресс, кор и большое кардио",
+        items: [
+          { slug: "captains-chair-raise", sets: 4, reps: "12", rest: 45, block: "core" },
+          { slug: "cable-crunch", sets: 4, reps: "15", rest: 45, block: "core" },
+          { slug: "pallof-press", sets: 3, reps: "10/сторону", rest: 45, block: "core" },
+          { slug: "rotary-torso", sets: 3, reps: "15/сторону", rest: 45, block: "core" },
+        ],
+      },
+      {
+        title: LEGS,
+        focus: "Квадрицепс, бицепс бедра, икры",
         items: [
           { slug: "goblet-squat", sets: 4, reps: "8-10", rest: 120 },
-          { slug: "leg-press", sets: 3, reps: "10-12", rest: 90 },
+          { slug: "leg-press", sets: 4, reps: "10-12", rest: 90 },
           { slug: "romanian-deadlift-db", sets: 3, reps: "8-10", rest: 90 },
           { slug: "leg-extension", sets: 3, reps: "12", rest: 45, block: "superset-a" },
           { slug: "leg-curl", sets: 3, reps: "12", rest: 45, block: "superset-b" },
@@ -225,44 +231,44 @@ const PHASES: Phase[] = [
     name: "Интенсив",
     months: [9, 10],
     intro:
-      "Push-Pull-Legs с повышенным объёмом и финишерами. Максимальный расход энергии при сохранении силы.",
+      "Повышенный объём и финишеры. Максимальный расход энергии при сохранении силы. Среда — мощное кардио.",
     restAdvice:
       "Объём высокий — слушай тело. Разрешено заменить 1 тренировку в неделю на активное восстановление, если накопилась усталость.",
     days: [
       {
-        title: "Жим — объём",
-        focus: "Грудь, плечи, трицепс",
+        title: UPPER,
+        focus: "Грудь, спина, плечи, руки",
         items: [
           { slug: "db-bench-press", sets: 4, reps: "8-10", rest: 90 },
           { slug: "incline-db-press", sets: 3, reps: "10-12", rest: 90 },
-          { slug: "machine-shoulder-press", sets: 3, reps: "8-12", rest: 75 },
+          { slug: "assisted-pull-up", sets: 4, reps: "8-10", rest: 90 },
           { slug: "lateral-raise", sets: 3, reps: "15", rest: 45 },
-          { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-a" },
+          { slug: "cable-curl", sets: 3, reps: "12", rest: 45, block: "superset-a" },
+          { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-b" },
           { slug: "bench-dips", sets: 2, reps: "макс", rest: 60, block: "finisher" },
         ],
       },
       {
-        title: "Тяга — объём",
-        focus: "Спина, задние дельты, бицепс",
+        title: CORE,
+        focus: "Пресс, кор и интервалы кардио",
         items: [
-          { slug: "assisted-pull-up", sets: 4, reps: "8-10", rest: 90 },
-          { slug: "seated-cable-row", sets: 4, reps: "8-12", rest: 90 },
-          { slug: "straight-arm-pulldown", sets: 3, reps: "12", rest: 60 },
-          { slug: "face-pull", sets: 3, reps: "15", rest: 45 },
-          { slug: "cable-curl", sets: 3, reps: "12", rest: 45, block: "superset-a" },
-          { slug: "hammer-curl", sets: 3, reps: "12", rest: 45, block: "superset-b" },
+          { slug: "captains-chair-raise", sets: 4, reps: "15", rest: 45, block: "core" },
+          { slug: "cable-crunch", sets: 4, reps: "20", rest: 45, block: "core" },
+          { slug: "cable-woodchop", sets: 3, reps: "15/сторону", rest: 45, block: "core" },
+          { slug: "pallof-press", sets: 3, reps: "12/сторону", rest: 45, block: "core" },
+          { slug: "rotary-torso", sets: 3, reps: "20/сторону", rest: 45, block: "core" },
         ],
       },
       {
-        title: "Ноги — объём",
-        focus: "Ноги целиком",
+        title: LEGS,
+        focus: "Квадрицепс, бицепс бедра, икры",
         items: [
-          { slug: "goblet-squat", sets: 4, reps: "8-10", rest: 120 },
-          { slug: "hack-squat", sets: 3, reps: "10-12", rest: 90 },
-          { slug: "leg-press", sets: 3, reps: "12-15", rest: 90 },
-          { slug: "leg-curl", sets: 3, reps: "12", rest: 45 },
+          { slug: "hack-squat", sets: 4, reps: "8-10", rest: 120 },
+          { slug: "romanian-deadlift-db", sets: 4, reps: "8-10", rest: 90 },
+          { slug: "leg-press", sets: 4, reps: "12-15", rest: 90 },
+          { slug: "leg-extension", sets: 3, reps: "15", rest: 45, block: "superset-a" },
+          { slug: "leg-curl", sets: 3, reps: "15", rest: 45, block: "superset-b" },
           { slug: "calf-raise", sets: 4, reps: "15-20", rest: 45 },
-          { slug: "captains-chair-raise", sets: 3, reps: "12", rest: 45, block: "core" },
         ],
       },
     ],
@@ -271,43 +277,44 @@ const PHASES: Phase[] = [
     name: "Пик и поддержка",
     months: [11, 12],
     intro:
-      "Финальный блок: удерживаем силу и мышцы, максимизируем жиросжигание. Push-Pull-Legs + кондиция.",
+      "Финальный блок: удерживаем силу и мышцы, максимизируем жиросжигание. Максимум кардио.",
     restAdvice:
       "Ты близко к цели. Не срывай темп: питание и сон решают. После года — переходи на поддерживающий режим.",
     days: [
       {
-        title: "Жим — финал",
-        focus: "Грудь, плечи, трицепс",
+        title: UPPER,
+        focus: "Грудь, спина, плечи, руки",
         items: [
           { slug: "db-bench-press", sets: 4, reps: "8-10", rest: 90 },
-          { slug: "machine-chest-press", sets: 3, reps: "10-12", rest: 75 },
-          { slug: "overhead-db-press", sets: 4, reps: "8-10", rest: 90 },
-          { slug: "lateral-raise", sets: 4, reps: "15", rest: 45 },
-          { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-a" },
-          { slug: "bench-dips", sets: 2, reps: "макс", rest: 60, block: "finisher" },
-        ],
-      },
-      {
-        title: "Тяга — финал",
-        focus: "Спина и бицепс",
-        items: [
           { slug: "lat-pulldown", sets: 4, reps: "8-10", rest: 90 },
-          { slug: "machine-row", sets: 4, reps: "10-12", rest: 90 },
-          { slug: "db-row", sets: 3, reps: "10", rest: 75 },
-          { slug: "face-pull", sets: 3, reps: "15", rest: 45 },
+          { slug: "machine-row", sets: 3, reps: "10-12", rest: 75 },
+          { slug: "overhead-db-press", sets: 3, reps: "10-12", rest: 75 },
+          { slug: "lateral-raise", sets: 3, reps: "15", rest: 45 },
           { slug: "db-curl", sets: 3, reps: "12", rest: 45, block: "superset-a" },
-          { slug: "cable-curl", sets: 3, reps: "12", rest: 45, block: "superset-b" },
+          { slug: "triceps-pushdown", sets: 3, reps: "12", rest: 45, block: "superset-b" },
         ],
       },
       {
-        title: "Ноги — финал",
-        focus: "Ноги, кондиция",
+        title: CORE,
+        focus: "Пресс, кор и большое кардио",
+        items: [
+          { slug: "captains-chair-raise", sets: 4, reps: "15", rest: 45, block: "core" },
+          { slug: "cable-crunch", sets: 4, reps: "20", rest: 45, block: "core" },
+          { slug: "pallof-press", sets: 3, reps: "12/сторону", rest: 45, block: "core" },
+          { slug: "rotary-torso", sets: 3, reps: "20/сторону", rest: 45, block: "core" },
+          { slug: "cable-woodchop", sets: 3, reps: "15/сторону", rest: 45, block: "core" },
+        ],
+      },
+      {
+        title: LEGS,
+        focus: "Квадрицепс, бицепс бедра, икры",
         items: [
           { slug: "goblet-squat", sets: 4, reps: "10", rest: 120 },
           { slug: "romanian-deadlift-db", sets: 4, reps: "8-10", rest: 90 },
           { slug: "leg-press", sets: 4, reps: "12", rest: 90 },
-          { slug: "leg-extension", sets: 3, reps: "15", rest: 45, block: "superset-a" },
-          { slug: "leg-curl", sets: 3, reps: "15", rest: 45, block: "superset-b" },
+          { slug: "hack-squat", sets: 3, reps: "12", rest: 75 },
+          { slug: "leg-curl", sets: 3, reps: "15", rest: 45, block: "superset-a" },
+          { slug: "leg-extension", sets: 3, reps: "15", rest: 45, block: "superset-b" },
           { slug: "calf-raise", sets: 4, reps: "20", rest: 45 },
         ],
       },
@@ -332,24 +339,13 @@ function weightAdviceFor(slug: string): string {
   return "рабочий вес: 1–2 повтора в запасе";
 }
 
-// Ротация кардио-тренажёров по дням недели:
-//   Пн (0) — беговая дорожка, Ср (1) — велотренажёр, Пт (2) — лестница/степпер.
+// Кардио: Пн (верх) — дорожка (умеренно), Ср (пресс) — БОЛЬШОЕ кардио
+// (лестница/интервалы), Пт (ноги) — велотренажёр (лёгкое, низкая ударность).
 function cardioFor(month: number, dayIndex: number, isDeload: boolean) {
   const base = CARDIO_MIN[month] ?? 25;
-  const min = isDeload ? Math.max(12, Math.round(base * 0.6)) : base;
-
-  // Интервалы вводим с 6-го месяца в среду (велотренажёр)
-  if (dayIndex === 1 && month >= 6 && !isDeload) {
-    const rounds = Math.max(5, Math.round(min / 3));
-    return {
-      slug: "cardio-intervals",
-      minutes: min,
-      summary: `Интервалы на велотренажёре: ${rounds} раундов (1 мин мощно / 2 мин легко) ≈ ${min} мин`,
-      reps: `${rounds} раундов`,
-    };
-  }
 
   if (dayIndex === 0) {
+    const min = isDeload ? Math.max(12, Math.round(base * 0.6)) : base;
     const incline = Math.min(12, 6 + Math.floor(month / 2));
     return {
       slug: "treadmill-incline-walk",
@@ -358,23 +354,38 @@ function cardioFor(month: number, dayIndex: number, isDeload: boolean) {
       reps: `${min} мин`,
     };
   }
-  if (dayIndex === 1) {
+
+  if (dayIndex === 2) {
+    const min = isDeload ? Math.max(10, Math.round((base - 8) * 0.6)) : Math.max(12, base - 8);
     return {
       slug: "stationary-bike",
       minutes: min,
-      summary: `Велотренажёр: ${min} мин ровным темпом с умеренным сопротивлением`,
+      summary: `Велотренажёр: ${min} мин, низкая ударность после ног`,
       reps: `${min} мин`,
+    };
+  }
+
+  // Среда — главный кардио-день: base + 12 минут
+  const big = base + 12;
+  const min = isDeload ? Math.max(15, Math.round(big * 0.6)) : big;
+  if (month >= 5 && !isDeload) {
+    const rounds = Math.max(6, Math.round(min / 3));
+    return {
+      slug: "cardio-intervals",
+      minutes: min,
+      summary: `Интервалы (лестница/дорожка): ${rounds} раундов (1 мин мощно / 2 мин легко) ≈ ${min} мин`,
+      reps: `${rounds} раундов`,
     };
   }
   return {
     slug: "stair-climber",
     minutes: min,
-    summary: `Лестница (степпер): ${min} мин ровным темпом, корпус прямой`,
+    summary: `Лестница (степпер): ${min} мин ровным темпом — главное кардио недели`,
     reps: `${min} мин`,
   };
 }
 
-function warmupFor(_phaseIndex: number) {
+function warmupFor(_dayIndex: number) {
   return {
     slug: "treadmill-warmup",
     summary: "5 минут лёгкой ходьбы на дорожке — поднять пульс",
@@ -435,7 +446,6 @@ export function generateProgram(): GenPlan[] {
   for (let month = 1; month <= 12; month++) {
     const weeksInMonth = MONTH_WEEKS[month - 1];
     const phase = phaseForMonth(month);
-    const phaseIndex = PHASES.indexOf(phase);
     const monthWithinPhase = (month - phase.months[0]) % 2; // 0 = первый месяц блока, 1 = второй
 
     for (let wm = 1; wm <= weeksInMonth; wm++) {
@@ -445,11 +455,10 @@ export function generateProgram(): GenPlan[] {
       for (let dayIndex = 0; dayIndex < 3; dayIndex++) {
         sequence++;
         const day = phase.days[dayIndex];
-        const warmup = warmupFor(phaseIndex);
+        const warmup = warmupFor(dayIndex);
         const cardio = cardioFor(month, dayIndex, isDeload);
         const cooldown = cooldownFor(dayIndex);
 
-        // Заметка по прогрессии
         let notes: string;
         if (isDeload) {
           notes =
@@ -462,7 +471,6 @@ export function generateProgram(): GenPlan[] {
             "Держи идеальную технику. Прогрессируй в весе, когда все подходы даются с запасом 1–2 повтора.";
         }
 
-        // Формируем список: разминка → силовые/кор → кардио → заминка
         const items: GenExerciseItem[] = [];
         let order = 0;
 
@@ -478,7 +486,6 @@ export function generateProgram(): GenPlan[] {
         });
 
         for (const it of day.items) {
-          // Прогрессия объёма: во втором месяце блока +1 подход на первых двух базовых
           let sets = it.sets;
           if (monthWithinPhase === 1 && !isDeload && order <= 2 && (it.block ?? "main") === "main") {
             sets += 1;

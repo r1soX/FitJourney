@@ -15,28 +15,35 @@ export function RestTimer({
   onSkip: () => void;
 }) {
   const [remaining, setRemaining] = useState(seconds);
-  const total = useRef(seconds);
+  const [total, setTotal] = useState(seconds);
+  const endRef = useRef<number>(Date.now() + seconds * 1000);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
 
+  // Абсолютная метка времени: таймер не сбивается, если экран гаснет/сворачивается
   useEffect(() => {
-    const id = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(id);
-          if (typeof navigator !== "undefined" && navigator.vibrate) {
-            navigator.vibrate([120, 60, 120]);
-          }
-          doneRef.current();
-          return 0;
+    const tick = () => {
+      const rem = Math.max(0, Math.round((endRef.current - Date.now()) / 1000));
+      setRemaining(rem);
+      if (rem <= 0) {
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate([120, 60, 120]);
         }
-        return r - 1;
-      });
-    }, 1000);
+        doneRef.current();
+      }
+    };
+    tick();
+    const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, []);
 
-  const pct = total.current > 0 ? (remaining / total.current) * 100 : 0;
+  const pct = total > 0 ? (remaining / total) * 100 : 0;
+
+  function addFifteen() {
+    endRef.current += 15_000;
+    setTotal((t) => t + 15);
+    setRemaining((r) => r + 15);
+  }
 
   return (
     <motion.div
@@ -58,7 +65,7 @@ export function RestTimer({
               stroke="#3b82f6"
               strokeDasharray={2 * Math.PI * 28}
               strokeDashoffset={2 * Math.PI * 28 * (1 - pct / 100)}
-              style={{ transition: "stroke-dashoffset 1s linear" }}
+              style={{ transition: "stroke-dashoffset 0.5s linear" }}
             />
           </svg>
           <Timer size={20} className="text-accent-soft" />
@@ -69,10 +76,7 @@ export function RestTimer({
         </div>
         <div className="flex flex-col gap-2">
           <button
-            onClick={() => {
-              setRemaining((r) => r + 15);
-              total.current += 15;
-            }}
+            onClick={addFifteen}
             className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium active:scale-95"
           >
             <Plus size={14} /> 15с

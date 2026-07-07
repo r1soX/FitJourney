@@ -130,9 +130,9 @@ export default async function TogetherPage() {
         </StaggerItem>
         <StaggerItem>
           <StatTile
-            label="В один день"
+            label="Общих тренировок"
             value={data.combined.workoutsTogether}
-            sub={pluralize(data.combined.workoutsTogether, "раз тренировались", "раза тренировались", "раз тренировались")}
+            sub="оба выполнили одну и ту же"
             icon={<Handshake size={16} />}
             accent
           />
