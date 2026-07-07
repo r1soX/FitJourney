@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { Chrome } from "@/components/Chrome";
+import { ChunkErrorReload } from "@/components/ChunkErrorReload";
 
 export const metadata: Metadata = {
   title: "FitJourney — путь к 80 кг",
@@ -39,8 +41,9 @@ export default function RootLayout({
   return (
     <html lang="ru" className="dark">
       <body>
-        {children}
+        <Chrome>{children}</Chrome>
         <ServiceWorkerRegister />
+        <ChunkErrorReload />
       </body>
     </html>
   );

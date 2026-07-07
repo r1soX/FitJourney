@@ -1,5 +1,5 @@
 // FitJourney service worker — офлайн-кэш (app shell + посещённые страницы).
-const CACHE = "fitjourney-v2";
+const CACHE = "fitjourney-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
