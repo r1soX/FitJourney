@@ -108,23 +108,23 @@ async function main() {
   console.log(`✓ Пользователь «${friend.username}» готов`);
 
   // ── Библиотека упражнений (общая) ──
-  await prisma.workoutExercise.deleteMany();
-  await prisma.workoutPlan.deleteMany();
-  await prisma.exercise.deleteMany();
-
+  // ВАЖНО: без deleteMany — обновляем по месту (upsert), чтобы НЕ рвать историю
+  // тренировок пользователей при повторном запуске сида в проде.
   for (const ex of EXERCISES) {
-    await prisma.exercise.create({
-      data: {
-        slug: ex.slug,
-        name: ex.name,
-        category: ex.category,
-        muscleGroup: ex.muscleGroup,
-        equipment: ex.equipment,
-        description: ex.description,
-        technique: ex.technique,
-        tips: ex.tips,
-        alternativeSlugs: JSON.stringify(ex.alternatives),
-      },
+    const data = {
+      name: ex.name,
+      category: ex.category,
+      muscleGroup: ex.muscleGroup,
+      equipment: ex.equipment,
+      description: ex.description,
+      technique: ex.technique,
+      tips: ex.tips,
+      alternativeSlugs: JSON.stringify(ex.alternatives),
+    };
+    await prisma.exercise.upsert({
+      where: { slug: ex.slug },
+      update: data,
+      create: { slug: ex.slug, ...data },
     });
   }
   console.log(`✓ Загружено упражнений: ${EXERCISES.length}`);
@@ -135,28 +135,35 @@ async function main() {
   }
 
   // ── Годовая программа (общая) ──
+  // Планы обновляются upsert по sequence — id планов остаются стабильными,
+  // поэтому завершённые тренировки сохраняют привязку и НЕ становятся «пропущенными».
   const program = generateProgram();
   let itemCount = 0;
   for (const plan of program) {
-    const created = await prisma.workoutPlan.create({
-      data: {
-        sequence: plan.sequence,
-        month: plan.month,
-        weekOfProgram: plan.weekOfProgram,
-        weekOfMonth: plan.weekOfMonth,
-        dayOfWeek: plan.dayOfWeek,
-        phase: plan.phase,
-        title: plan.title,
-        focus: plan.focus,
-        warmup: plan.warmup,
-        cardio: plan.cardio,
-        cooldown: plan.cooldown,
-        restAdvice: plan.restAdvice,
-        notes: plan.notes,
-        estMinutes: plan.estMinutes,
-        isDeload: plan.isDeload,
-      },
+    const fields = {
+      month: plan.month,
+      weekOfProgram: plan.weekOfProgram,
+      weekOfMonth: plan.weekOfMonth,
+      dayOfWeek: plan.dayOfWeek,
+      phase: plan.phase,
+      title: plan.title,
+      focus: plan.focus,
+      warmup: plan.warmup,
+      cardio: plan.cardio,
+      cooldown: plan.cooldown,
+      restAdvice: plan.restAdvice,
+      notes: plan.notes,
+      estMinutes: plan.estMinutes,
+      isDeload: plan.isDeload,
+    };
+    const created = await prisma.workoutPlan.upsert({
+      where: { sequence: plan.sequence },
+      update: fields,
+      create: { sequence: plan.sequence, ...fields },
     });
+
+    // пересобираем упражнения этого плана (историю в ExerciseLog это не трогает)
+    await prisma.workoutExercise.deleteMany({ where: { planId: created.id } });
 
     const items = plan.exercises
       .map((it) => {
@@ -179,7 +186,14 @@ async function main() {
     await prisma.workoutExercise.createMany({ data: items });
     itemCount += items.length;
   }
-  console.log(`✓ Создано тренировок: ${program.length}, элементов: ${itemCount}`);
+
+  // Убираем лишние планы (если программа стала короче) и упражнения, которых
+  // больше нет в библиотеке. ExerciseLog хранит slug/имя отдельно — история цела.
+  await prisma.workoutPlan.deleteMany({ where: { sequence: { gt: program.length } } });
+  const keepSlugs = EXERCISES.map((e) => e.slug);
+  await prisma.exercise.deleteMany({ where: { slug: { notIn: keepSlugs } } });
+
+  console.log(`✓ Обновлено тренировок: ${program.length}, элементов: ${itemCount}`);
 
   console.log("✅ Готово!");
 }
