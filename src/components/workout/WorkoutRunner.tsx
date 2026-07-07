@@ -62,6 +62,7 @@ export interface RunnerData {
   status: string;
   planSequence: number;
   startedAtISO: string | null;
+  durationSec: number | null;
   logs: RunnerLog[];
 }
 
@@ -98,13 +99,19 @@ export function WorkoutRunner({ data }: { data: RunnerData }) {
     data.startedAtISO ? new Date(data.startedAtISO).getTime() : Date.now(),
   );
 
-  // Таймер тренировки — привязан к серверному времени старта сессии
+  // Таймер тренировки — привязан к серверному времени старта сессии.
+  // Для завершённой тренировки показываем сохранённую длительность, а не «сколько
+  // прошло с момента старта» (иначе набегают часы с прошлого дня).
   useEffect(() => {
+    if (data.status === "completed") {
+      setElapsed(data.durationSec ?? 0);
+      return;
+    }
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTime.current) / 1000));
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [data.status, data.durationSec]);
 
   // Восстановление прогресса из localStorage (перезагрузка страницы / офлайн)
   useEffect(() => {

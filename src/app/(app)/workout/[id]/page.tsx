@@ -114,6 +114,7 @@ export default async function WorkoutPage({
     planSequence: workout.plan.sequence,
     status: workout.status,
     startedAtISO: workout.startedAt ? workout.startedAt.toISOString() : null,
+    durationSec: workout.durationSec ?? null,
     logs,
   };
 
